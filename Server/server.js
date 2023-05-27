@@ -1,36 +1,38 @@
-const express = require("express");
-require("dotenv").config();
-const { dbConnection } = require("../database/config");
-const cors = require("cors");
-const { socketControllers } = require("../sockets/controller");
-const { swaggerDocs: v1SwaggerDocs } = require("../swagger");
+const express = require('express');
+require('dotenv').config({ path: `.env.${process.env.NODE_ENV}` });
+const { dbConnection } = require('../database/config');
+const cors = require('cors');
+const http = require('http');
+const { Server } = require('socket.io');
+const { socketController } = require('../sockets/controller');
+const { swaggerDocs: v1SwaggerDocs } = require('../swagger');
 
-class Server {
+class BackendServer {
   constructor() {
     this.headers = {
       cors: {
-        origin: "*",
-        methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+        origin: '*',
+        methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
       },
     };
-
     //Crear Express APP
     this.app = express();
-    this.port = process.env.PORT;
-    this.server = require("http").createServer(this.app);
-    this.io = require("socket.io")(this.server, this.headers);
-
+    this.port = process.env.PORT || 3000;
+    this.server = http.createServer(this.app);
+    this.io = new Server(this.server, this.headers);
+    // this.io = new Server(this.server);
     this.paths = {
-      auth: "/api/auth",
-      doc: "/",
-      task: "/api/task",
+      auth: '/api/auth',
+      doc: '/',
+      task: '/api/task',
     };
 
     this.connectToDB();
+    this.sockets();
     this.addMiddlewares();
     this.setRoutes();
-    this.sockets();
   }
+
   //Base Datos
   async connectToDB() {
     await dbConnection();
@@ -41,27 +43,30 @@ class Server {
     this.app.use(cors());
     // Lectura y parseo del body
     this.app.use(express.json());
+    // public folder
+    this.app.use("/static", express.static('public'));
   }
 
   setRoutes() {
     //Rutas
-    this.app.use(this.paths.auth, require("../routes/auth"));
-    this.app.use(this.paths.doc, require("../routes/doc"));
-    this.app.use(this.paths.task, require("../routes/task"));
-    // public folder
-    this.app.use(express.static("public"));
+    this.app.use(this.paths.auth, require('../routes/auth'));
+    this.app.use(this.paths.doc, require('../routes/doc'));
+    this.app.use(this.paths.task, require('../routes/task'));
   }
 
   sockets() {
-    this.io.on("connection", (socket) => socketControllers(socket, this.io));
+    this.io.on('connection', (socket) => {
+      console.log('conexion detectada');
+      socketController(socket, this.io);
+    });
   }
 
   listen() {
-    this.app.listen(this.port, () => {
-      console.log("Servidor corriendo en puerto", this.port);
-      v1SwaggerDocs(this.app, this.port)
+    this.server.listen(this.port, () => {
+      console.log(`Servidor corriendo en http://localhost:${this.port}`);
+      v1SwaggerDocs(this.app, this.port);
     });
   }
 }
 
-module.exports = Server;
+module.exports = BackendServer;
